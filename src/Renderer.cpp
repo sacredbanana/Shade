@@ -1,8 +1,6 @@
 #include <iostream>
-#include <switch.h>
-#include <EGL/egl.h>    // EGL library
-#include <EGL/eglext.h> // EGL extensions
-#include <glad/glad.h>  // glad library (OpenGL loader)
+
+#include "Shade.h"
 
 #define GLEW_NO_GLU
 
@@ -23,6 +21,7 @@ namespace Renderer
 	static EGLDisplay s_display;
 	static EGLContext s_context;
 	static EGLSurface s_surface;
+	static NWindow *win;
 	
 	static bool initEgl()
 	{
@@ -37,10 +36,12 @@ namespace Renderer
 		// Initialize the EGL display connection
 		eglInitialize(s_display, nullptr, nullptr);
 
+		eglSetSwapInterval(s_display, 0);
+
 		// Select OpenGL (Core) as the desired graphics API
 		if (eglBindAPI(EGL_OPENGL_API) == EGL_FALSE)
 		{
-			//TRACE("Could not set API! error: %d", eglGetError());
+			TRACE("Could not set API! error: %d", eglGetError());
 			goto _fail1;
 		}
 
@@ -49,23 +50,27 @@ namespace Renderer
 		EGLint numConfigs;
 		static const EGLint framebufferAttributeList[] =
 		{
-			EGL_RED_SIZE, 1,
-			EGL_GREEN_SIZE, 1,
-			EGL_BLUE_SIZE, 1,
+			EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
+			EGL_RED_SIZE, 8,
+			EGL_GREEN_SIZE, 8,
+			EGL_BLUE_SIZE, 8,
+			EGL_ALPHA_SIZE,   8,
+        	EGL_DEPTH_SIZE,   24,
+        	EGL_STENCIL_SIZE, 8,
 			EGL_NONE
 		};
 		eglChooseConfig(s_display, framebufferAttributeList, &config, 1, &numConfigs);
 		if (numConfigs == 0)
 		{
-			//TRACE("No config found! error: %d", eglGetError());
+			TRACE("No config found! error: %d", eglGetError());
 			goto _fail1;
 		}
 
 		// Create an EGL window surface
-		s_surface = eglCreateWindowSurface(s_display, config, (char*)"", nullptr);
+		s_surface = eglCreateWindowSurface(s_display, config, win, nullptr);
 		if (!s_surface)
 		{
-			//TRACE("Surface creation failed! error: %d", eglGetError());
+			TRACE("Surface creation failed! error: %d", eglGetError());
 			goto _fail1;
 		}
 
@@ -74,13 +79,13 @@ namespace Renderer
 		{
 			EGL_CONTEXT_OPENGL_PROFILE_MASK_KHR, EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT_KHR,
 			EGL_CONTEXT_MAJOR_VERSION_KHR, 4,
-			EGL_CONTEXT_MINOR_VERSION_KHR, 3,
+			EGL_CONTEXT_MINOR_VERSION_KHR, 1,
 			EGL_NONE
 		};
 		s_context = eglCreateContext(s_display, config, EGL_NO_CONTEXT, contextAttributeList);
 		if (!s_context)
 		{
-			//TRACE("Context creation failed! error: %d", eglGetError());
+			TRACE("Context creation failed! error: %d", eglGetError());
 			goto _fail2;
 		}
 
@@ -120,17 +125,17 @@ namespace Renderer
 	static void setMesaConfig()
 	{
 		// Uncomment below to disable error checking and save CPU time (useful for production):
-		//setenv("MESA_NO_ERROR", "1", 1);
+		// setenv("MESA_NO_ERROR", "1", 1);
 
 		// Uncomment below to enable Mesa logging:
-		//setenv("EGL_LOG_LEVEL", "debug", 1);
-		//setenv("MESA_VERBOSE", "all", 1);
-		//setenv("NOUVEAU_MESA_DEBUG", "1", 1);
+		setenv("EGL_LOG_LEVEL", "debug", 1);
+		setenv("MESA_VERBOSE", "all", 1);
+		setenv("NOUVEAU_MESA_DEBUG", "1", 1);
 
 		// Uncomment below to enable shader debugging in Nouveau:
-		//setenv("NV50_PROG_OPTIMIZE", "0", 1);
-		//setenv("NV50_PROG_DEBUG", "1", 1);
-		//setenv("NV50_PROG_CHIPSET", "0x120", 1);
+		setenv("NV50_PROG_OPTIMIZE", "0", 1);
+		setenv("NV50_PROG_DEBUG", "1", 1);
+		setenv("NV50_PROG_CHIPSET", "0x120", 1);
 	}
 
 	static void configureResolution(bool halved)
@@ -170,8 +175,8 @@ namespace Renderer
 		// remain unused when rendering at a smaller resolution than the framebuffer).
 		// Note that glViewport expects the coordinates of the bottom-left corner of
 		// the viewport, so we have to calculate that too.
-		gfxConfigureResolution(width, height);
-		glViewport(0, 1080-height, width, height);
+		nwindowSetCrop(win, 0, 0, width, height);
+    	glViewport(0, 1080-height, width, height);
 	}
 	
 	std::string defaultShaderFilename = "shader.glsl";
@@ -245,8 +250,9 @@ namespace Renderer
 		// Set mesa configuration (useful for debugging)
 		setMesaConfig();
 
-		// Configure the framebuffer dimensions (1080p)
-		gfxInitResolution(1920, 1080);
+		// Retrieve the default window and configure its dimensions (1080p)
+    	win = nwindowGetDefault();
+    	nwindowSetDimensions(win, 1920, 1080);
 
 		// Initialize EGL
 		if (!initEgl())
@@ -401,36 +407,39 @@ namespace Renderer
 	{
 		glClearColor(0.08f, 0.18f, 0.18f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-	}
 
-	void EndFrame()
-	{
 		 // Get and process input
-        hidScanInput();
-        u32 kDown = hidKeysDown(CONTROLLER_P1_AUTO);
-        u32 kHeld = hidKeysHeld(CONTROLLER_P1_AUTO);
-        if (kDown & KEY_PLUS)
-            run = false;
-
-        bool shouldHalveResolution = !!(kHeld & KEY_A);
-		appletMainLoop();
+        // hidScanInput();
+        // u32 kDown = hidKeysDown(CONTROLLER_P1_AUTO);
+        // u32 kHeld = hidKeysHeld(CONTROLLER_P1_AUTO);
+        // if (kDown & KEY_PLUS)
+        //     run = false;
+		TRACE("A");
+        bool shouldHalveResolution = false;//!!(kHeld & KEY_A);
+		// appletMainLoop();
 
         // Configure the resolution used to render the scene, which
         // will be different in handheld mode/docked mode.
         // As an additional demonstration, when holding A we render the scene
         // at half the original resolution.
         configureResolution(shouldHalveResolution);
-
+		TRACE("B");
         // Update our scene
         //sceneUpdate(kHeld);
 
         // Render stuff!
         //sceneRender();
+	}
+
+	void EndFrame()
+	{
         eglSwapBuffers(s_display, s_surface);
+		TRACE("C");
 	}
 
 	void RenderFullscreenQuad()
 	{
+		TRACE("Starting render");
 		glBindVertexArray(glhFullscreenQuadVA);
 
 		glUseProgram(theShader);
@@ -451,6 +460,7 @@ namespace Renderer
 		glDisableVertexAttribArray(position);
 
 		glUseProgram(NULL);
+		TRACE("Render done");
 	}
 
 	bool ReloadShader(char * szShaderCode, int nShaderCodeSize, char * szErrorBuffer, int nErrorBufferSize)

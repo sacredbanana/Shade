@@ -7,18 +7,49 @@
 #include "jsonxx.h"
 #include "Timer.h"
 #include <fstream>
-#include <switch.h>
-#include <EGL/egl.h>    // EGL library
-#include <EGL/eglext.h> // EGL extensions
-#include <glad/glad.h>  // glad library (OpenGL loader)
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <cstring>
+#include "Shade.h"
 
 using namespace std;
+
+static int s_nxlinkSock = -1;
+
+static void initNxLink()
+{
+    if (R_FAILED(socketInitializeDefault()))
+        return;
+
+    s_nxlinkSock = nxlinkStdio();
+    if (s_nxlinkSock >= 0)
+        TRACE("printf output now goes to nxlink server");
+    else
+        socketExit();
+}
+
+static void deinitNxLink()
+{
+    if (s_nxlinkSock >= 0)
+    {
+        close(s_nxlinkSock);
+        socketExit();
+        s_nxlinkSock = -1;
+    }
+}
+
+extern "C" void userAppInit()
+{
+    initNxLink();
+}
+
+extern "C" void userAppExit()
+{
+    deinitNxLink();
+}
 
 void ReplaceTokens(std::string &sDefShader, const char * sTokenBegin, const char * sTokenName, const char * sTokenEnd, std::vector<std::string> &tokens)
 {
@@ -86,7 +117,7 @@ void update(bool *isClosed) {
 
 int main(int argc, char *argv[])
 {
-	/*string line;
+	string line;
 	string file;
 
 	ifstream myfile("config.json");
@@ -98,7 +129,6 @@ int main(int argc, char *argv[])
 	}
 	else {
 		cout << "Unable to open config file" << endl;
-#pragma warning(suppress : 4996)
 		cerr << "Error: " << strerror(errno);
 		int c;
 		cin >> c;
@@ -106,20 +136,10 @@ int main(int argc, char *argv[])
 
 	jsonxx::Object options;
 
-	options.parse(file);*/
+	options.parse(file);
 
 	RENDERER_SETTINGS settings;
 	settings.bVsync = false;
-
-	/*if (options.has<jsonxx::Object>("window"))
-	{
-		if (options.get<jsonxx::Object>("window").has<jsonxx::Number>("width"))
-			settings.nWidth = options.get<jsonxx::Object>("window").get<jsonxx::Number>("width");
-		if (options.get<jsonxx::Object>("window").has<jsonxx::Number>("height"))
-			settings.nHeight = options.get<jsonxx::Object>("window").get<jsonxx::Number>("height");
-		if (options.get<jsonxx::Object>("window").has<jsonxx::Boolean>("fullscreen"))
-			settings.windowMode = options.get<jsonxx::Object>("window").get<jsonxx::Boolean>("fullscreen") ? RENDERER_WINDOWMODE_FULLSCREEN : RENDERER_WINDOWMODE_WINDOWED;
-	}	*/
 
 	bool isClosed = false;
 
@@ -131,14 +151,8 @@ int main(int argc, char *argv[])
 
 	std::map<std::string, Renderer::Texture*> textures;
 
-	/*if (!options.empty())
+	if (!options.empty())
 	{
-		if (options.has<jsonxx::Object>("rendering"))
-		{
-			if (options.get<jsonxx::Object>("rendering").has<jsonxx::Number>("fftSmoothFactor"))
-				fFFTSmoothingFactor = options.get<jsonxx::Object>("rendering").get<jsonxx::Number>("fftSmoothFactor");
-		}
-
 		if (options.has<jsonxx::Object>("textures"))
 		{
 			printf("Loading textures...\n");
@@ -156,7 +170,7 @@ int main(int argc, char *argv[])
 				textures.insert(std::make_pair(it->first, tex));
 			}
 		}
-	}*/
+	}
 
 	bool shaderInitSuccessful = false;
 	char szShader[65535];
@@ -205,24 +219,33 @@ int main(int argc, char *argv[])
 	float fNextTick = 0.1;
 	while (!isClosed)
 	{
+		TRACE("1");
 		float time = Timer::GetTime();
+		TRACE("2");
 		Renderer::StartFrame();
+		TRACE("3");
 
 		Renderer::SetShaderConstant(string("fGlobalTime"), time);
+		TRACE("4");
 		// I don't know why I have to double the 720p resolution here...
-		int renderHeight = Renderer::nHeight == 1080 ? 1080 : 1440;
-		Renderer::SetShaderConstant(string("v2Resolution"), Renderer::nWidth, renderHeight);
+		//int renderHeight = Renderer::nHeight == 1080 ? 1080 : 1440;
+		Renderer::SetShaderConstant(string("v2Resolution"), Renderer::nWidth, Renderer::nHeight);
+		TRACE("5");
 
 		for (std::map<std::string, Renderer::Texture*>::iterator it = textures.begin(); it != textures.end(); it++)
 		{
 			Renderer::SetShaderTexture((char*)it->first.c_str(), it->second);
 		}
+		TRACE("6");
 
 		Renderer::RenderFullscreenQuad();
+		TRACE("7");
 
 		Renderer::EndFrame();
+		TRACE("8");
 
 		update(&isClosed);
+		TRACE("9");
 	}
 
 	for (std::map<std::string, Renderer::Texture*>::iterator it = textures.begin(); it != textures.end(); it++)

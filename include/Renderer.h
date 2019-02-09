@@ -1,4 +1,6 @@
 #pragma once
+
+
 typedef enum {
 	RENDERER_WINDOWMODE_WINDOWED = 0,
 	RENDERER_WINDOWMODE_FULLSCREEN,
